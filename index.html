@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Data Quality Analyzer | Análise de qualidade de dados em CSV</title>
+  <meta name="description" content="Importe um CSV e identifique valores ausentes, duplicidades, inconsistências de formatação e linhas irregulares. Tudo é processado no seu navegador.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#importar">Ir para o conteúdo principal</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect x="3" y="3" width="26" height="26" rx="6" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M3 11h26M3 20h26M12 3v26" stroke="currentColor" stroke-width="2" fill="none"/>
+          <rect x="13.5" y="12.5" width="6" height="6" rx="1" fill="var(--accent)"/>
+        </svg>
+        <div>
+          <h1>Data Quality Analyzer</h1>
+          <p class="tagline">Revise a qualidade de um CSV antes de usá-lo em análises ou relatórios.</p>
+        </div>
+      </div>
+      <p class="privacy-pill">Seus dados não saem do navegador</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 1. Importação -->
+    <section id="importar" class="card" aria-labelledby="t-importar">
+      <h2 id="t-importar">Importar dados</h2>
+
+      <div id="dropzone" class="dropzone">
+        <div class="dropzone-text">
+          <strong>Arraste um arquivo CSV para cá</strong>
+          <span>ou escolha um arquivo do seu computador (.csv, .tsv ou .txt, até 25 MB)</span>
+        </div>
+        <div class="dropzone-actions">
+          <label class="btn btn-primary" for="fileInput">Escolher arquivo</label>
+          <input id="fileInput" class="visually-hidden-input" type="file" accept=".csv,.tsv,.txt,text/csv,text/plain">
+          <button type="button" id="demoBtn" class="btn">Carregar dados demonstrativos</button>
+          <button type="button" id="clearBtn" class="btn btn-ghost">Limpar</button>
+        </div>
+      </div>
+
+      <details class="read-options">
+        <summary>Opções de leitura</summary>
+        <div class="options-grid">
+          <label class="field">
+            <span>Delimitador</span>
+            <select id="delimiterSelect">
+              <option value="auto">Detectar automaticamente</option>
+              <option value="comma">Vírgula (,)</option>
+              <option value="semicolon">Ponto e vírgula (;)</option>
+              <option value="tab">Tabulação (Tab)</option>
+              <option value="pipe">Barra vertical (|)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Codificação</span>
+            <select id="encodingSelect">
+              <option value="auto">Automática (UTF-8, ou Windows-1252 se inválido)</option>
+              <option value="utf-8">UTF-8</option>
+              <option value="windows-1252">Windows-1252 (Latin-1)</option>
+            </select>
+          </label>
+        </div>
+      </details>
+
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <p id="fileInfo" class="file-info"></p>
+      <p class="note-inline">O arquivo original nunca é modificado. A ferramenta apenas lê, aponta ocorrências e gera um relatório separado.</p>
+    </section>
+
+    <div id="emptyState" class="empty-state">
+      <h2>Nenhum arquivo analisado ainda</h2>
+      <p>Importe um CSV ou clique em <strong>Carregar dados demonstrativos</strong> para ver a ferramenta funcionando com dados fictícios.</p>
+    </div>
+
+    <!-- Resultados (ocultos até haver análise) -->
+    <div id="results" hidden>
+      <!-- 2. Indicadores -->
+      <section id="indicadores" class="section" aria-labelledby="t-ind">
+        <h2 id="t-ind">Indicadores</h2>
+        <p class="section-hint">Clique em um indicador para filtrar a tabela e a lista de problemas.</p>
+        <div id="cards" class="stats"></div>
+      </section>
+
+      <!-- Resumo por coluna -->
+      <section id="colunas" class="section" aria-labelledby="t-col">
+        <h2 id="t-col">Resumo por coluna</h2>
+        <p class="section-hint">O tipo é inferido pelo conteúdo: uma coluna só é tratada como numérica, data ou e-mail quando pelo menos 70% dos valores preenchidos seguem esse formato.</p>
+        <div class="table-wrap">
+          <table class="data-table summary-table">
+            <thead>
+              <tr>
+                <th scope="col">Coluna</th>
+                <th scope="col">Tipo inferido</th>
+                <th scope="col" class="num">Preenchidos</th>
+                <th scope="col" class="num">Ausentes</th>
+                <th scope="col" class="num">% ausentes</th>
+                <th scope="col" class="num">Inconsistências</th>
+                <th scope="col" class="num">Valores distintos</th>
+              </tr>
+            </thead>
+            <tbody id="columnsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 3. Filtros + tabela -->
+      <section id="dados" class="section" aria-labelledby="t-dados">
+        <h2 id="t-dados">Dados e filtros</h2>
+        <p class="section-hint">Os filtros valem para a tabela e para a lista de problemas. Células em amarelo são ausentes, em azul são possíveis inconsistências. Espaços no início ou no fim aparecem como pontos.</p>
+
+        <div class="filter-bar">
+          <div id="chips" class="chips" role="group" aria-label="Filtrar por tipo de problema"></div>
+          <div class="filter-fields">
+            <label class="field">
+              <span>Coluna</span>
+              <select id="columnFilter"></select>
+            </label>
+            <label class="field field-grow">
+              <span>Buscar</span>
+              <input id="searchInput" type="search" placeholder="Valor, descrição ou número da linha" autocomplete="off">
+            </label>
+            <button type="button" id="clearFilters" class="btn btn-ghost">Limpar filtros</button>
+          </div>
+        </div>
+
+        <p id="tableInfo" class="table-info" aria-live="polite"></p>
+        <div class="table-wrap table-wrap-tall">
+          <table class="data-table" id="dataTable">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+        <div id="tablePager" class="pager"></div>
+      </section>
+
+      <!-- 4. Lista de problemas -->
+      <section id="problemas" class="section" aria-labelledby="t-prob">
+        <h2 id="t-prob">Lista de problemas</h2>
+        <p class="section-hint">Cada ocorrência indica a regra usada. Passe o mouse sobre o nome da regra para ver a descrição completa.</p>
+        <p id="issuesInfo" class="table-info" aria-live="polite"></p>
+        <div class="table-wrap table-wrap-tall">
+          <table class="data-table issues-table">
+            <thead>
+              <tr>
+                <th scope="col">Tipo</th>
+                <th scope="col" class="num">Linha</th>
+                <th scope="col">Coluna</th>
+                <th scope="col">Valor original</th>
+                <th scope="col">Regra</th>
+                <th scope="col">Detalhe</th>
+                <th scope="col"><span class="visually-hidden">Ação</span></th>
+              </tr>
+            </thead>
+            <tbody id="issuesBody"></tbody>
+          </table>
+        </div>
+        <div id="issuesPager" class="pager"></div>
+      </section>
+
+      <!-- 5. Relatório -->
+      <section id="relatorio" class="section card" aria-labelledby="t-rel">
+        <div class="report-head">
+          <h2 id="t-rel">Relatório de qualidade</h2>
+          <div class="report-actions">
+            <button type="button" id="exportAll" class="btn btn-primary">Exportar relatório (CSV)</button>
+            <button type="button" id="exportFiltered" class="btn">Exportar visão filtrada</button>
+          </div>
+        </div>
+        <dl id="reportMeta" class="meta-list"></dl>
+        <div id="reportSummary" class="report-summary"></div>
+        <h3>Ocorrências por regra</h3>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Regra</th>
+                <th scope="col">Categoria</th>
+                <th scope="col">Descrição</th>
+                <th scope="col" class="num">Ocorrências</th>
+                <th scope="col">Exemplos</th>
+              </tr>
+            </thead>
+            <tbody id="reportRulesBody"></tbody>
+          </table>
+        </div>
+        <ul id="reportNotes" class="notes-list"></ul>
+      </section>
+    </div>
+
+    <!-- Regras e limitações (sempre visíveis) -->
+    <section id="regras" class="section card" aria-labelledby="t-regras">
+      <h2 id="t-regras">Regras aplicadas</h2>
+      <p class="section-hint">Estas são todas as verificações que a ferramenta executa. Os problemas são divididos em quatro categorias: <strong>ausentes</strong> (célula sem valor), <strong>duplicados</strong> (linha repetida de forma exata), <strong>inconsistências</strong> (indícios de erro de formatação ou conteúdo, a revisar) e <strong>estrutura</strong> (linhas ou cabeçalho fora do formato esperado).</p>
+      <div class="table-wrap">
+        <table class="data-table rules-table">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Categoria</th>
+              <th scope="col">Regra</th>
+              <th scope="col">Como é identificada</th>
+            </tr>
+          </thead>
+          <tbody id="rulesBody"></tbody>
+        </table>
+      </div>
+
+      <h3 id="limitacoes">Limitações</h3>
+      <ul class="notes-list">
+        <li>A ferramenta não detecta todos os erros possíveis. Valores errados mas bem formatados (um preço trocado, um nome com erro de digitação) passam despercebidos.</li>
+        <li>As inconsistências são indícios para revisão humana. Um valor sinalizado pode estar correto no seu contexto.</li>
+        <li>A duplicidade é avaliada na linha inteira. Repetição de apenas uma coluna-chave (por exemplo, o mesmo id com dados diferentes) não é sinalizada.</li>
+        <li>Datas com barra são lidas como DD/MM/AAAA. Arquivos em formato MM/DD/AAAA podem gerar sinalizações incorretas.</li>
+        <li>A validação de e-mail é simplificada e não verifica se o endereço existe.</li>
+        <li>O tipo de cada coluna é inferido por proporção de valores. Colunas com poucos valores preenchidos (menos de 3) não têm tipo nem padrão avaliados.</li>
+        <li>Aspas soltas no meio de um campo sem aspas são aceitas como texto comum, sem aviso.</li>
+        <li>O arquivo é lido inteiro na memória do navegador. Arquivos muito grandes podem deixar a análise lenta; o limite aceito é 25 MB.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Data Quality Analyzer é um projeto de portfólio feito com HTML, CSS e JavaScript puros, sem backend e sem bibliotecas externas. Os dados demonstrativos são fictícios.</p>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
